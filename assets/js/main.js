@@ -22,7 +22,7 @@ var config = {
     default: 'arcade',
     arcade: {
       gravity: { y: 300 },
-      debug: false
+      debug: true
     }
   },
   scene: {
@@ -43,6 +43,7 @@ var gameOver = false
 var moveCam = false
 var bullets
 var bulletTime = 0
+var bagjok
 var game = new Phaser.Game(config);
 
 let playerSpeed = 250
@@ -58,13 +59,11 @@ function preload (){
   this.load.image('sky', 'assets/img/bg_long.png');
   this.load.image('ground', 'assets/img/ground.png');
   this.load.image('platform', 'assets/img/platform.png');
+  this.load.spritesheet('bagoj', 'assets/img/novenybagoj_sprite.png', { frameWidth: 75, frameHeight: 50 });
   this.load.image('star', 'assets/img/star.png');
   this.load.image('bomb', 'assets/img/bomb.png');
-  this.load.image('bullet', 'assets/img/faszmakro.png')
-  this.load.spritesheet('dude', 
-      'assets/img/makrovonat_sprite.png',
-      { frameWidth: 83, frameHeight: 50 }
-  );
+  this.load.image('bullet', 'assets/img/faszmakro.png');
+  this.load.spritesheet('dude', 'assets/img/makrovonat_sprite.png',{ frameWidth: 83, frameHeight: 50 });
 }
 
 /*
@@ -108,7 +107,40 @@ function create (){
     frameRate: 10,
     repeat: -1
   });
+  
+  this.anims.create({
+    key: 'bagojrepul',
+    frames: this.anims.generateFrameNumbers('bagoj', { start: 0, end: 1 }),
+    frameRate: 4,
+    repeat: -1
+  });
+
+  bagjok = this.physics.add.group({
+    angularDrag: 500,
+    angularVelocity: 0,
+    bounceX: 1,
+    bounceY: 1,
+    collideWorldBounds: true,
+    dragX: 1500,
+    dragY: 1
+  });
+  var b1 = this.physics.add.sprite(300, 45, 'bagoj')
+  var b2 = this.physics.add.sprite(450, 45, 'bagoj')
+  var b3 = this.physics.add.sprite(80, 45, 'bagoj')
+  bagjok.add(b1)
+  bagjok.add(b2)
+  bagjok.add(b3)
+  
+  bagjok.children.each(function(b) {
+    b.body.setBoundsRectangle(new Phaser.Geom.Rectangle(0,0,5800,600))
+    b.setBounce(0.2);
+    this.physics.add.collider(b, platforms);
+    this.physics.add.collider(b, player, imDead);
+  }.bind(this));
+  this.anims.staggerPlay('bagojrepul', bagjok.getChildren(), 60);
+
   cursors = this.input.keyboard.createCursorKeys();
+
   stars = this.physics.add.group({
     key: 'star',
     repeat: 11,
@@ -130,7 +162,12 @@ function create (){
   this.cameras.main.setZoom(1);
 
   // Bullets
-  bullets = this.physics.add.staticGroup();
+  this.bullets = new Bullets(this);
+  this.bullets.children.each(function(b) {
+    this.physics.add.collider(b, platforms);
+    this.physics.add.collider(b, bagjok, hit, null, this);
+    b.setBounce(Phaser.Math.FloatBetween(0.1, 0.3))
+  }.bind(this));
 }
 
 /*
@@ -155,6 +192,9 @@ function update (){
     if(this.moveCam){
       cam.scrollX -= 4;
     }
+    if(cursors.space.isDown){
+      this.bullets.fireBullet(player.x,player.y,'left');
+    }
   }
   else if (cursors.right.isDown){
     if(cursors.shift.isDown){
@@ -167,18 +207,33 @@ function update (){
     if(this.moveCam){
       cam.scrollX += 4;
     }
+    if(cursors.space.isDown){
+      this.bullets.fireBullet(player.x,player.y,'right');
+    }
   }
   else if(cursors.space.isDown){
-    fireBullet();
+    this.bullets.fireBullet(player.x,player.y,'down');
   }
   else{
     player.setVelocityX(0);
     player.anims.play('turn');
   }
 
-  if (cursors.up.isDown && player.body.touching.down){
-    player.setVelocityY(-330);
-  }
+  if (cursors.up.isDown){
+    this.bullets.fireBullet(player.x,player.y,'up');
+    if(player.body.touching.down){
+      player.setVelocityY(-330);
+    }
+  } 
+  this.bullets.children.each(function(b) {
+    if (b.y>0) {
+      b.setActive(false);
+    }
+  }.bind(this));
+  
+  bagjok.children.each(function(b) {
+    b.setBounce(1);
+  }.bind(this));
 }
 
 function collectStar (player, star){
@@ -187,9 +242,15 @@ function collectStar (player, star){
   scoreText.setText('Score: ' + score);
 }
 
-function fireBullet(){
-  let bullet = bullets.create(player.x, player.y, 'bullet');
-  if(bullet){
-    bullet.setVelocityX(500);
-  }
+function imDead(){
+  player.setTint(0xff0000);
+  player.anims.play('turn');
+  gameOver = true
+}
+
+function hit(bullet, target){
+  target.setTint(0xff5959);
+  setTimeout(() => {
+    target.disableBody(true,true);
+  }, 200);
 }
